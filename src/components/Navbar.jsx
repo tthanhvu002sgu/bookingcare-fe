@@ -1,11 +1,31 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { useState } from "react";
 import "../index.css";
 import { assets } from "../assets/assets";
+import axios from "../api/axios";
+
+
 const Navbar = () => {
   const navigate = useNavigate();
 
-  const [token, setToken] = useState(true);
+  const accessToken = localStorage.getItem('access_token');
+
+  const handleLogout = async () => {
+    try {
+ 
+      const response = await axios.post('/api/auth/logout'); 
+
+      if (response.status === 200) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('userData');
+        navigate('/login');
+      } else {
+        console.error('Logout failed:', response.data);
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
 
   return (
     <div className="flex items-center justify-between text-sm py-4 mb-5 border-b border-b-gray-400">
@@ -33,7 +53,7 @@ const Navbar = () => {
         </NavLink>
       </ul>
       <div className="flex items-center gap-4">
-        {token ? (
+        {accessToken  ? (
           <div className="flex items-center gap-2 group relative">
             <img
               src={assets.profile_pic}
@@ -49,7 +69,7 @@ const Navbar = () => {
               <div className="min-w-48 bg-stone-200 rounded flex flex-col gap-4 p-4">
                 <p onClick={() => navigate("/my-profile")} className="hover:text-black cursor-pointer">My Profile</p>
                 <p onClick={() => navigate("/my-appointment")} className="hover:text-black cursor-pointer">My Appointment</p>
-                <p onClick={() => setToken(false)} className="hover:text-black cursor-pointer">Logout</p>
+                <p onClick={() => handleLogout()} className="hover:text-black cursor-pointer">Logout</p>
               </div>
             </div>
           </div>
