@@ -11,28 +11,27 @@ const Appointment = () => {
   const [doctorInfo, setDoctorInfo] = useState(null);
   const [docSlots, setDocSlots] = useState([]);
   const [slotIndex, setSlotIndex] = useState(0);
-  const [selectedSlotIndex, setSelectedSlotIndex] = useState(null); // Chỉ mục của slot đã chọn
+  const [selectedSlotIndex, setSelectedSlotIndex] = useState(null);
   const [slotTime, setSlotTime] = useState("");
 
+  const token = localStorage.getItem("access_token");
+
+  // Hàm lấy danh sách các slot và thông tin bác sĩ
   const getAvailableSlots = async () => {
     try {
       const doctorId = docId.replace("doc", "");
-      console.log("Doctor ID:", doctorId);
 
-      const responseslot = await fetch(
-        `http://localhost:8083/schedules/doctor?id=${doctorId}`
-      );
-      const responsedocInfo = await fetch(
-        `http://localhost:8083/user/${doctorId}`
-      );
+      const [responseSlot, responseDocInfo] = await Promise.all([
+        fetch(`http://localhost:8083/schedules/doctor?id=${doctorId}`),
+        fetch(`http://localhost:8083/user/${doctorId}`),
+      ]);
 
-      if (!responseslot.ok || !responsedocInfo.ok) {
+      if (!responseSlot.ok || !responseDocInfo.ok) {
         throw new Error("Network response was not ok");
       }
 
-      const data = await responseslot.json();
-      const doctorData = await responsedocInfo.json();
-
+      const data = await responseSlot.json();
+      const doctorData = await responseDocInfo.json();
       setDocSlots(data);
       setDoctorInfo(doctorData);
     } catch (error) {
@@ -45,7 +44,7 @@ const Appointment = () => {
       const response = await fetch(
         `http://localhost:8083/schedules/editIsBooked/${slotId}`,
         {
-          method: "PUT", 
+          method: "PUT",
           headers: {
             "Content-Type": "application/json",
           },
@@ -66,27 +65,22 @@ const Appointment = () => {
     getAvailableSlots();
   }, [docId]);
 
-  // Nhóm khung giờ theo ngày
   const groupedSlots = docSlots.reduce((acc, item) => {
     const date = item.working_date;
     if (!acc[date]) {
-      acc[date] = {
-        date,
-        slots: [],
-      };
+      acc[date] = { date, slots: [] };
     }
     acc[date].slots.push(item);
     return acc;
   }, {});
 
-  // Chuyển đổi object thành mảng
   const groupedSlotsArray = Object.values(groupedSlots);
 
   return (
     <div>
       {doctorInfo || docSlots.length > 0 ? (
         <div>
-          {/* Thông tin bác sĩ */}
+          {/* Hiển thị thông tin bác sĩ */}
           <div className="flex flex-col sm:flex-row gap-4">
             <div>
               <img
@@ -117,7 +111,7 @@ const Appointment = () => {
                   About <img src={assets.info_icon} alt="Info" />
                 </p>
                 <p className="text-sm text-gray-500 max-w-[700px] mt-3">
-                  {doctorInfo.clinic.description}
+                  {doctorInfo.clinic_Id.description}
                 </p>
               </div>
               <div className="mt-3">
@@ -131,9 +125,9 @@ const Appointment = () => {
             </div>
           </div>
 
+          {/* Hiển thị lựa chọn thời gian khám */}
           <div className="sm:ml-72 sm:pl-4 mt-4 font-medium text-gray-700 mb-4">
             <p className="mb-4">Booking Slot</p>
-            {/* Chọn ngày */}
             {groupedSlotsArray.length > 0 && (
               <div className="flex gap-3 items-center w-full overflow-x-scroll mt-4">
                 {groupedSlotsArray.map((group, index) => (
@@ -155,7 +149,6 @@ const Appointment = () => {
                 ))}
               </div>
             )}
-            {/* Chọn giờ */}
             {groupedSlotsArray.length > 0 &&
               groupedSlotsArray[slotIndex]?.slots.length > 0 && (
                 <div className="flex gap-3 items-center w-full overflow-x-scroll mt-4 mb-8">
@@ -164,7 +157,7 @@ const Appointment = () => {
                       key={idx}
                       onClick={() => {
                         setSlotTime(slot.start_time);
-                        setSelectedSlotIndex(idx); // Gán chỉ mục slot đã chọn
+                        setSelectedSlotIndex(idx);
                       }}
                       className={`text-sm font-light flex-shrink-0 px-5 py-2 rounded-full cursor-pointer ${
                         idx === selectedSlotIndex
@@ -177,40 +170,70 @@ const Appointment = () => {
                   ))}
                 </div>
               )}
-            {/* Nút đặt lịch */}
             <Link
               onClick={async () => {
-                if (slotTime && selectedSlotIndex !== null) {
-                  const selectedDate = groupedSlotsArray[slotIndex].date; // Lấy ngày đã chọn
-                  const formattedDate = new Date(selectedDate); // Chuyển đổi thành đối tượng Date
-                  const day = formattedDate.getDate();
-                  const month = formattedDate.getMonth() + 1; // Tháng bắt đầu từ 0
-                  const year = formattedDate.getFullYear();
-
-                  // Định dạng chuỗi ngày và giờ
-                  const dateTime = `${day}/${month}/${year} ${slotTime}`;
-                  console.log(`Booked an appointment for time: ${dateTime}`);
-
-                  // Gọi API để đánh dấu lịch là đã đặt
-                   const selectedSlotId = groupedSlotsArray[slotIndex].slots[selectedSlotIndex].schedule_Id;
-                  
-
-                  
-                  
-                  await editIsBooked(selectedSlotId); // Gọi hàm API
-                } else {
-                  alert("Please select a time before booking.");
+                const selectedSlot =
+                  groupedSlotsArray[slotIndex]?.slots[selectedSlotIndex];
+                if (selectedSlot) {
+                  const selectedDate = new Date(selectedSlot.working_date);
+                  const [hours, minutes] = selectedSlot.start_time
+                    .split(":")
+                    .map(Number);
+                  selectedDate.setHours(hours, minutes, 0, 0);
+            
+                  const patientResponse = await fetch(
+                    "http://localhost:8083/api/auth/profile",
+                    {
+                      headers: {
+                        Authorization: `Bearer ${token}`,
+                      },
+                    }
+                  );
+            
+                  const patientData = await patientResponse.json();
+                  const appointmentTimestamp = selectedDate.getTime();
+            
+                  const appointmentData = {
+                    doctor: { userId: doctorInfo.user_Id },
+                    patient: { userId: patientData }, // Đảm bảo patientData có userId
+                    startTime: selectedSlot.start_time,
+                    appointmentDate: appointmentTimestamp,
+                  };
+                  console.log(selectedSlot);
+            
+                  console.log(appointmentData);
+            
+                  try {
+                    const response1 = await fetch(
+                      "http://localhost:8083/appointment/add",
+                      {
+                        method: "POST",
+                        headers: {
+                          Authorization: `Bearer ${token}`,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify(appointmentData),
+                      }
+                    );
+                  } catch (error) {
+                    console.error("Error creating appointment:", error);
+                  }
+                  await editIsBooked(selectedSlot.schedule_Id);
                 }
               }}
-              className="bg-primary text-white font-light px-14 py-3 text-sm rounded-full my-6 mt-4"
-              to={slotTime ? `/my-appointment` : "#"}
+              {...(selectedSlotIndex !== null
+                ? { to: `/my-appointment` }
+                : { onClick: () => alert("Please select a slot") })}
+              className="mt-8 block text-center text-white bg-primary rounded-full py-2 w-full sm:w-48"
             >
-              Book an appointment
+              Book Appointment
             </Link>
           </div>
         </div>
       ) : (
-        <p>Loading doctor information and available slots...</p>
+        <div className="h-80 w-full flex justify-center items-center">
+          <p className="text-gray-500 text-lg">Loading doctor information...</p>
+        </div>
       )}
     </div>
   );
