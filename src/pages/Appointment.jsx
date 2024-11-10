@@ -198,6 +198,7 @@ const Appointment = () => {
                     patient: { userId: patientData }, // Đảm bảo patientData có userId
                     startTime: selectedSlot.start_time,
                     appointmentDate: appointmentTimestamp,
+                    schedule: {schedule_Id: selectedSlot.schedule_Id},
                   };
                   console.log(selectedSlot);
             

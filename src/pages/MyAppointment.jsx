@@ -1,11 +1,14 @@
-import { useEffect,useState } from "react";
+import { useEffect, useState } from "react";
+
 const MyAppointment = () => {
-  const [appointment, setAppointment] = useState({});
+  const [appointment, setAppointment] = useState([]); // Đảm bảo kiểu dữ liệu là một mảng
+  const [showModal, setShowModal] = useState(false);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(""); // State để hiển thị thông báo thành công
+
   useEffect(() => {
-    // Lấy token từ localStorage
-    const token = localStorage.getItem("access_token"); // Sử dụng getItem để lấy giá trị từ localStorage
+    const token = localStorage.getItem("access_token");
     if (token) {
-      // Thực hiện yêu cầu API với token
       fetchAppointments(token);
     } else {
       console.log("No token found");
@@ -13,78 +16,109 @@ const MyAppointment = () => {
   }, []);
 
   const fetchAppointments = async (token) => {
-    const response = await fetch("http://localhost:8083/api/auth/profile", {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`, // Gửi token trong header Authorization
-        "Content-Type": "application/json",
-      },
-    })
-      .then((response) => {
-        // Kiểm tra xem phản hồi từ API có thành công không
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-
-        // Kiểm tra nếu phản hồi có nội dung JSON hợp lệ
-        return response.text(); // Chúng ta sẽ dùng text() để kiểm tra có dữ liệu không
-      })
-      .then((responseText) => {
-        // Kiểm tra xem có dữ liệu JSON không
-        if (!responseText) {
-          throw new Error("No data returned from API.");
-        }
-        
-        // Nếu có dữ liệu, chúng ta sẽ phân tích JSON
-        const userIdValue = JSON.parse(responseText); // Giả sử responseText là số hoặc chứa số.
-        
-        
-        const appoint = fetch("http://localhost:8083/appointment/", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`, // Gửi token trong header Authorization
-            "Content-Type": "application/json",
-            
-          },
-          body: JSON.stringify({ userId : userIdValue }), // Gửi ID của người dùng trong body yêu cầu
-        })
-          .then((response) => {
-            if (!response.ok) {
-              throw new Error(
-                `Failed to fetch appointments. Status: ${response.status}`
-              );
-            }
-            return response.json(); // Chuyển đổi dữ liệu trả về thành JSON
-          })
-          .then((appointments) => {
-            // Sửa lại tên biến từ userId thành appointments
-            console.log("Lịch hẹn của người dùng:", appointments);
-            setAppointment(appointments);
-          })
-          .catch((error) => {
-            console.error("Lỗi khi gửi yêu cầu:", error);
-          });
-      })
-      .catch((error) => {
-        console.error("Error fetching appointments:", error);
+    try {
+      const response = await fetch("http://localhost:8083/api/auth/profile", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       });
-      
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      const responseText = await response.text();
+      if (!responseText) {
+        throw new Error("No data returned from API.");
+      }
+
+      const userIdValue = JSON.parse(responseText);
+      console.log("User ID:", userIdValue);
+
+      const appointResponse = await fetch("http://localhost:8083/appointment/", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId: userIdValue }),
+      });
+
+      if (!appointResponse.ok) {
+        throw new Error(`Failed to fetch appointments. Status: ${appointResponse.status}`);
+      }
+
+      const appointments = await appointResponse.json();
+      console.log("Appointments:", appointments);
+      setAppointment(appointments);
+    } catch (error) {
+      console.error("Error fetching appointments:", error);
+    }
   };
 
+  const handleCancelAppointment = (appointmentId) => {
+    setSelectedAppointmentId(appointmentId);
+    setShowModal(true);
+  };
+
+  const confirmCancel = async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token || !selectedAppointmentId) return;
+
+    try {
+      const response = await fetch(
+        `http://localhost:8083/appointment/editIsStatus/${selectedAppointmentId}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to cancel appointment. Status: ${response.status}`);
+      }
+
+      // Cập nhật lại danh sách sau khi xóa thành công
+      setAppointment((prevAppointments) =>
+        prevAppointments.filter((item) => item.appointment_Id !== selectedAppointmentId)
+      );
+
+      // Hiển thị thông báo thành công
+      setSuccessMessage("Appointment canceled successfully!");
+      setShowModal(false);
+
+      // Xóa thông báo sau 3 giây
+      setTimeout(() => {
+        setSuccessMessage("");
+      }, 3000);
+    } catch (error) {
+      console.error("Error canceling appointment:", error);
+    }
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+  };
 
   return (
     <div>
-      <p className="pb-3 mt-12 font-medium text-zinc-700 border-b">
-        My Appointment
-      </p>
+      <p className="pb-3 mt-12 font-medium text-zinc-700 border-b">My Appointment</p>
+      {successMessage && (
+        <div className="p-4 mb-4 text-green-700 bg-green-100 border border-green-300 rounded">
+          {successMessage}
+        </div>
+      )}
       <div>
         {appointment && Array.isArray(appointment) && appointment.length > 0 ? (
           appointment.map((item, index) => {
-            // Convert timestamp to readable date format
             const appointmentDate = new Date(item.appointment_Date);
             const formattedDate = `${appointmentDate.getDate()}/${appointmentDate.getMonth() + 1}/${appointmentDate.getFullYear()}`;
-  
-            // Convert start_time to readable format
+
             const formattedStartTime = () => {
               if (item.start_time) {
                 const [hours, minutes] = item.start_time.split(':');
@@ -92,12 +126,12 @@ const MyAppointment = () => {
                 date.setHours(hours);
                 date.setMinutes(minutes);
                 const ampm = date.getHours() >= 12 ? 'PM' : 'AM';
-                const hour = date.getHours() % 12 || 12; // Chuyển giờ 24h thành 12h
+                const hour = date.getHours() % 12 || 12;
                 return `${hour}:${minutes} ${ampm}`;
               }
               return 'N/A';
             };
-  
+
             return (
               <div
                 key={index}
@@ -112,7 +146,7 @@ const MyAppointment = () => {
                 </div>
                 <div className="flex-1 text-sm text-zinc-600">
                   <p className="text-neutral-800 font-semibold">{item.doctor ? item.doctor.fullName : 'Unknown Doctor'}</p>
-                  <p className="">{item.doctor.specialization.description || 'Unknown Speciality'}</p>
+                  <p>{item.doctor.specialization.description || 'Unknown Speciality'}</p>
                   <p className="mt-1 font-medium text-neutral-700">Address:</p>
                   <p className="text-xs">{item.doctor ? item.doctor.address : 'No address available'}</p>
                   <p className="text-xs mt-1">
@@ -126,7 +160,10 @@ const MyAppointment = () => {
                   <button className="text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-primary hover:text-white transition-all duration-200">
                     Pay Online
                   </button>
-                  <button className="text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-red-600 hover:text-white transition-all duration-200">
+                  <button
+                    onClick={() => handleCancelAppointment(item.appointment_Id)}
+                    className="text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-red-600 hover:text-white transition-all duration-200"
+                  >
                     Cancel Appointment
                   </button>
                 </div>
@@ -137,11 +174,30 @@ const MyAppointment = () => {
           <p>No appointments available</p>
         )}
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-50 flex justify-center items-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-sm w-full">
+            <p className="text-lg font-semibold mb-4">Are you sure you want to cancel this appointment?</p>
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={confirmCancel}
+                className="py-2 px-4 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Yes
+              </button>
+              <button
+                onClick={closeModal}
+                className="py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-  
-  
-  
 };
 
 export default MyAppointment;
