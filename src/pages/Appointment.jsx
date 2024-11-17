@@ -169,7 +169,9 @@ const Appointment = () => {
                     </p>
                   ))}
                 </div>
+                
               )}
+              
             <Link
               onClick={async () => {
                 const selectedSlot =
@@ -199,10 +201,11 @@ const Appointment = () => {
                     startTime: selectedSlot.start_time,
                     appointmentDate: appointmentTimestamp,
                     schedule: {schedule_Id: selectedSlot.schedule_Id},
+                    amout: doctorInfo.booking_Fee,
                   };
                   console.log(selectedSlot);
             
-                  console.log(appointmentData);
+                  console.log(doctorInfo);
             
                   try {
                     const response1 = await fetch(
