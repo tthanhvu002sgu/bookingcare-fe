@@ -13,6 +13,7 @@ const Appointment = () => {
   const [slotIndex, setSlotIndex] = useState(0);
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(null);
   const [slotTime, setSlotTime] = useState("");
+  const [isDuplicate, setIsDuplicate] = useState(null);
 
   const token = localStorage.getItem("access_token");
 
@@ -169,65 +170,82 @@ const Appointment = () => {
                     </p>
                   ))}
                 </div>
-                
               )}
-              
+
             <Link
               onClick={async () => {
                 const selectedSlot =
                   groupedSlotsArray[slotIndex]?.slots[selectedSlotIndex];
+
                 if (selectedSlot) {
                   const selectedDate = new Date(selectedSlot.working_date);
                   const [hours, minutes] = selectedSlot.start_time
                     .split(":")
                     .map(Number);
                   selectedDate.setHours(hours, minutes, 0, 0);
-            
-                  const patientResponse = await fetch(
-                    "http://localhost:8083/api/auth/profile",
-                    {
-                      headers: {
-                        Authorization: `Bearer ${token}`,
-                      },
-                    }
-                  );
-            
-                  const patientData = await patientResponse.json();
-                  const appointmentTimestamp = selectedDate.getTime();
-            
-                  const appointmentData = {
-                    doctor: { userId: doctorInfo.user_Id },
-                    patient: { userId: patientData }, // Đảm bảo patientData có userId
-                    startTime: selectedSlot.start_time,
-                    appointmentDate: appointmentTimestamp,
-                    schedule: {schedule_Id: selectedSlot.schedule_Id},
-                    amout: doctorInfo.booking_Fee,
-                  };
-                  console.log(selectedSlot);
-            
-                  console.log(doctorInfo);
-            
+
                   try {
-                    const response1 = await fetch(
-                      "http://localhost:8083/appointment/add",
+                    // Lấy thông tin bệnh nhân
+                    const patientResponse = await fetch(
+                      "http://localhost:8083/api/auth/profile",
                       {
-                        method: "POST",
                         headers: {
                           Authorization: `Bearer ${token}`,
-                          "Content-Type": "application/json",
                         },
-                        body: JSON.stringify(appointmentData),
                       }
                     );
+                    const patientData = await patientResponse.json();
+                    const appointmentTimestamp = selectedDate.getTime();
+
+                    // Kiểm tra lịch trùng
+                    const duplicateCheckResponse = await fetch(
+                      `http://localhost:8083/appointment/checkexistsappointment?patientId=${patientData}&appointmentDate=${appointmentTimestamp}&startTime=${selectedSlot.start_time}`
+                    );
+                    const isDuplicateResult =
+                      await duplicateCheckResponse.json();
+                    setIsDuplicate(isDuplicateResult);
+
+                    // Kiểm tra và thông báo nếu trùng lịch
+                    if (isDuplicateResult !== 0) {
+                      alert("This appointment slot has already been booked.");
+                      return;
+                    }
+
+                    // Chuẩn bị dữ liệu và tạo cuộc hẹn
+                    const appointmentData = {
+                      doctor: { userId: doctorInfo.user_Id },
+                      patient: { userId: patientData },
+                      startTime: selectedSlot.start_time,
+                      appointmentDate: appointmentTimestamp,
+                      schedule: { schedule_Id: selectedSlot.schedule_Id },
+                      amout: doctorInfo.booking_Fee,
+                    };
+
+                    await fetch("http://localhost:8083/appointment/add", {
+                      method: "POST",
+                      headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify(appointmentData),
+                    });
+
+                    await editIsBooked(selectedSlot.schedule_Id);
                   } catch (error) {
-                    console.error("Error creating appointment:", error);
+                    console.error("Error:", error);
                   }
-                  await editIsBooked(selectedSlot.schedule_Id);
                 }
               }}
               {...(selectedSlotIndex !== null
-                ? { to: `/my-appointment` }
-                : { onClick: () => alert("Please select a slot") })}
+                ? {
+                    to:
+                      isDuplicate === 0
+                        ? "/my-appointment"
+                        : `/appointment/doc${doctorInfo.user_Id}`,
+                  }
+                : {
+                    onClick: () => alert("Please select a slot"),
+                  })}
               className="mt-8 block text-center text-white bg-primary rounded-full py-2 w-full sm:w-48"
             >
               Book Appointment
